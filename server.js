@@ -1,39 +1,47 @@
 const express = require("express");
-const fetch = require("node-fetch");
+const axios = require("axios");
 
 const app = express();
+const PORT = process.env.PORT || 3000;
 
-// 🔴 CAMBIA ESTO
-const RIOT_API_KEY = "RGAPI-008bfecf-7266-44ae-abad-dd5b50d4eb55";
-const PLATFORM = "LA2"; // LAS = LA1 | LAN = LA2
-const SUMMONER_NAME = "ºSantiMelodramaº
-";
+const RIOT_API_KEY = process.env.RIOT_API_KEY;
+const SUMMONER_NAME = process.env.SUMMONER_NAME;
+const TAG_LINE = process.env.TAG_LINE;
+const REGION = process.env.REGION;
 
 app.get("/elo", async (req, res) => {
   try {
-    const summonerRes = await fetch(
-      `https://${PLATFORM}.api.riotgames.com/lol/summoner/v4/summoners/by-name/${encodeURIComponent(SUMMONER_NAME)}`,
-      { headers: { "X-Riot-Token": RIOT_API_KEY } }
+    const accountUrl = `https://${REGION}.api.riotgames.com/riot/account/v1/accounts/by-riot-id/${encodeURIComponent(
+      SUMMONER_NAME
+    )}/${encodeURIComponent(TAG_LINE)}?api_key=${RIOT_API_KEY}`;
+
+    const accountRes = await axios.get(accountUrl);
+    const puuid = accountRes.data.puuid;
+
+    const summonerUrl = `https://la2.api.riotgames.com/lol/summoner/v4/summoners/by-puuid/${puuid}?api_key=${RIOT_API_KEY}`;
+    const summonerRes = await axios.get(summonerUrl);
+    const summonerId = summonerRes.data.id;
+
+    const rankedUrl = `https://la2.api.riotgames.com/lol/league/v4/entries/by-summoner/${summonerId}?api_key=${RIOT_API_KEY}`;
+    const rankedRes = await axios.get(rankedUrl);
+
+    const soloQ = rankedRes.data.find(
+      (q) => q.queueType === "RANKED_SOLO_5x5"
     );
 
-    const summoner = await summonerRes.json();
-
-    const rankedRes = await fetch(
-      `https://${PLATFORM}.api.riotgames.com/lol/league/v4/entries/by-summoner/${summoner.id}`,
-      { headers: { "X-Riot-Token": RIOT_API_KEY } }
-    );
-
-    const ranked = await rankedRes.json();
-    const soloQ = ranked.find(q => q.queueType === "RANKED_SOLO_5x5");
-
-    if (!soloQ) return res.send("Unranked en SoloQ");
+    if (!soloQ) {
+      return res.send("Sin ranked SoloQ aún");
+    }
 
     res.send(
-      `Elo actual: ${soloQ.tier} ${soloQ.rank} – ${soloQ.leaguePoints} LP`
+      `${soloQ.tier} ${soloQ.rank} – ${soloQ.leaguePoints} LP`
     );
-  } catch {
-    res.send("Error consultando Riot API");
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).send("Error obteniendo el elo");
   }
 });
 
-app.listen(3000, () => console.log("OK"));
+app.listen(PORT, () => {
+  console.log(`Servidor activo en puerto ${PORT}`);
+});
